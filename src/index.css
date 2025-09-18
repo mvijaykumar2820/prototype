@@ -6,65 +6,68 @@
 
 @layer base {
   :root {
-    /* Core educational color palette */
-    --background: 247 252 255%;
-    --foreground: 215 25% 15%;
+    /* Modern Professional Color Palette */
+    --background: 0 0% 100%;
+    --foreground: 224 15% 12%;
 
     --card: 0 0% 100%;
-    --card-foreground: 215 25% 15%;
+    --card-foreground: 224 15% 12%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 215 25% 15%;
+    --popover-foreground: 224 15% 12%;
 
-    /* Educational blue - trustworthy and professional */
-    --primary: 210 85% 45%;
+    /* Modern Blue - Professional and trustworthy */
+    --primary: 221 83% 53%;
     --primary-foreground: 0 0% 100%;
-    --primary-light: 210 85% 55%;
-    --primary-dark: 210 85% 35%;
+    --primary-light: 221 83% 63%;
+    --primary-dark: 221 83% 43%;
 
-    /* Learning green - growth and progress */
-    --secondary: 150 65% 45%;
+    /* Sophisticated Purple - Innovation and creativity */
+    --secondary: 262 83% 58%;
     --secondary-foreground: 0 0% 100%;
-    --secondary-light: 150 65% 55%;
+    --secondary-light: 262 83% 68%;
 
-    /* Soft accent colors */
-    --accent: 250 75% 65%;
+    /* Elegant Teal - Growth and balance */
+    --accent: 183 89% 40%;
     --accent-foreground: 0 0% 100%;
-    --accent-light: 250 75% 75%;
+    --accent-light: 183 89% 50%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 15% 55%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
 
-    --success: 140 70% 45%;
+    --success: 142 69% 48%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 35 90% 55%;
+    --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --destructive: 0 75% 55%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 25% 88%;
-    --input: 210 25% 92%;
-    --ring: 210 85% 45%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 221 83% 53%;
 
     --radius: 0.75rem;
 
-    /* Educational gradients */
+    /* Modern Professional Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-light)));
     --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary-light)));
-    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
     --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent-light)));
+    --gradient-hero: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--secondary)));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted)));
+    --gradient-glass: linear-gradient(135deg, hsl(0 0% 100% / 0.1), hsl(0 0% 100% / 0.05));
 
-    /* Shadows for depth and accessibility */
-    --shadow-soft: 0 2px 10px hsl(var(--primary) / 0.08);
-    --shadow-medium: 0 4px 20px hsl(var(--primary) / 0.12);
-    --shadow-large: 0 8px 40px hsl(var(--primary) / 0.16);
+    /* Modern Shadows */
+    --shadow-soft: 0 1px 3px hsl(var(--foreground) / 0.1);
+    --shadow-medium: 0 4px 12px hsl(var(--foreground) / 0.15);
+    --shadow-large: 0 10px 40px hsl(var(--foreground) / 0.15);
+    --shadow-glow: 0 0 20px hsl(var(--primary) / 0.3);
 
-    /* Transitions for smooth interactions */
-    --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Smooth Transitions */
+    --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-bounce: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    --transition-bounce: all 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
     --sidebar-background: 0 0% 98%;
 
@@ -84,44 +87,44 @@
   }
 
   .dark {
-    /* Dark mode educational colors */
-    --background: 215 30% 8%;
-    --foreground: 210 40% 95%;
+    /* Modern Dark Mode Colors */
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
 
-    --card: 215 30% 10%;
-    --card-foreground: 210 40% 95%;
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
 
-    --popover: 215 30% 10%;
-    --popover-foreground: 210 40% 95%;
+    --popover: 224 71% 4%;
+    --popover-foreground: 213 31% 91%;
 
-    --primary: 210 85% 60%;
-    --primary-foreground: 215 30% 8%;
-    --primary-light: 210 85% 70%;
-    --primary-dark: 210 85% 50%;
+    --primary: 221 83% 63%;
+    --primary-foreground: 224 71% 4%;
+    --primary-light: 221 83% 73%;
+    --primary-dark: 221 83% 53%;
 
-    --secondary: 150 65% 55%;
-    --secondary-foreground: 215 30% 8%;
-    --secondary-light: 150 65% 65%;
+    --secondary: 262 83% 68%;
+    --secondary-foreground: 224 71% 4%;
+    --secondary-light: 262 83% 78%;
 
-    --accent: 250 75% 70%;
-    --accent-foreground: 215 30% 8%;
-    --accent-light: 250 75% 80%;
+    --accent: 183 89% 50%;
+    --accent-foreground: 224 71% 4%;
+    --accent-light: 183 89% 60%;
 
-    --muted: 215 20% 15%;
-    --muted-foreground: 210 15% 65%;
+    --muted: 215 28% 17%;
+    --muted-foreground: 217 11% 65%;
 
-    --success: 140 70% 55%;
-    --success-foreground: 215 30% 8%;
+    --success: 142 69% 58%;
+    --success-foreground: 224 71% 4%;
 
-    --warning: 35 90% 65%;
-    --warning-foreground: 215 30% 8%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 224 71% 4%;
 
-    --destructive: 0 75% 65%;
-    --destructive-foreground: 215 30% 8%;
+    --destructive: 0 84% 70%;
+    --destructive-foreground: 224 71% 4%;
 
-    --border: 215 20% 20%;
-    --input: 215 20% 18%;
-    --ring: 210 85% 60%;
+    --border: 215 28% 17%;
+    --input: 215 28% 17%;
+    --ring: 221 83% 63%;
   }
 }
 
@@ -135,7 +138,7 @@
     font-feature-settings: 'rlig' 1, 'calt' 1;
   }
 
-  /* Educational utility classes */
+  /* Modern utility classes */
   .gradient-primary {
     background: var(--gradient-primary);
   }
@@ -144,8 +147,21 @@
     background: var(--gradient-secondary);
   }
 
+  .gradient-accent {
+    background: var(--gradient-accent);
+  }
+
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+
   .gradient-subtle {
     background: var(--gradient-subtle);
+  }
+
+  .gradient-glass {
+    background: var(--gradient-glass);
+    backdrop-filter: blur(10px);
   }
 
   .shadow-soft {
@@ -158,6 +174,10 @@
 
   .shadow-large {
     box-shadow: var(--shadow-large);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
   }
 
   .transition-fast {
@@ -177,12 +197,28 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 
-  /* Educational card styles */
+  /* Professional card styles */
   .card-elevated {
     @apply bg-card border border-border shadow-soft transition-smooth hover:shadow-medium;
   }
 
   .card-interactive {
     @apply card-elevated hover:scale-[1.02] cursor-pointer;
+  }
+
+  .card-glass {
+    @apply bg-white/10 backdrop-blur-lg border border-white/20 shadow-large;
+  }
+
+  /* Modern hero styles */
+  .hero-gradient {
+    background: var(--gradient-hero);
+  }
+
+  .text-gradient {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 }
