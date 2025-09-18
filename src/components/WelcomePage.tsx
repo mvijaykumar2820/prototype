@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GraduationCap, Users, BookOpen, Brain, Sparkles, ChevronRight } from "lucide-react";
+import { GraduationCap, Users, BookOpen, Brain, Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -43,7 +43,7 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
   if (loginMode === "teacher" || loginMode === "student") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 hero-gradient">
-        <Card className="w-full max-w-md card-glass text-white">
+        <Card className="w-full max-w-md card-glass text-gray-900">
           <CardHeader className="text-center space-y-4">
             <div className="mx-auto w-16 h-16 rounded-full gradient-glass flex items-center justify-center">
               {loginMode === "teacher" ? (
@@ -53,10 +53,10 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
               )}
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold text-white">
-                {loginMode === "teacher" ? "Teacher Login" : "Student Login"}
+              <CardTitle className="text-2xl font-bold text-gray-900">
+                {loginMode === "teacher" ? "Login as Teacher" : "Login as Student"}
               </CardTitle>
-              <CardDescription className="text-white/80">
+              <CardDescription className="text-gray-700">
                 Welcome back! Please sign in to continue
               </CardDescription>
             </div>
@@ -64,25 +64,25 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-white">Email</Label>
+                <Label htmlFor="email" className="text-gray-900">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/60 focus:bg-white/20"
+                  className="bg-white/10 border border-gray-400 text-gray-900 placeholder:text-gray-500 focus:bg-white/20 focus:border-primary"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-white">Password</Label>
+                <Label htmlFor="password" className="text-gray-900">Password</Label>
                 <Input
                   id="password"
                   type="password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="bg-white/10 border-white/20 text-white placeholder:text-white/60 focus:bg-white/20"
+                  className="bg-white/10 border border-gray-400 text-gray-900 placeholder:text-gray-500 focus:bg-white/20 focus:border-primary"
                 />
               </div>
             </div>
@@ -100,15 +100,17 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
               <Button
                 variant="ghost"
                 onClick={() => setLoginMode("select")}
-                className="w-full text-white hover:bg-white/10"
+                className="w-full text-primary hover:bg-primary/10 hover:text-primary transition-smooth flex items-center gap-2 justify-center"
+                style={{ position: "relative", left: "-15px" }} 
               >
+                <ChevronLeft className="h-4 w-4" />
                 Back to Role Selection
               </Button>
             </div>
 
-            <p className="text-center text-sm text-white/60">
+            <p className="text-center text-sm text-gray-600">
               Don't have an account?{" "}
-              <button className="text-white hover:underline font-medium">
+              <button className="text-primary hover:underline font-medium">
                 Contact Administrator
               </button>
             </p>
@@ -150,8 +152,8 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
                     <Users className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-2xl text-white">I'm a Teacher</CardTitle>
-                    <CardDescription className="text-white/70">
+                    <CardTitle className="text-2xl text-gray-900">I'm a Teacher</CardTitle>
+                    <CardDescription className="text-gray-700">
                       Create content, manage students, and track progress
                     </CardDescription>
                   </div>
@@ -173,8 +175,8 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
                     <GraduationCap className="h-8 w-8 text-white" />
                   </div>
                   <div>
-                    <CardTitle className="text-2xl text-white">I'm a Student</CardTitle>
-                    <CardDescription className="text-white/70">
+                    <CardTitle className="text-2xl text-gray-900">I'm a Student</CardTitle>
+                    <CardDescription className="text-gray-700">
                       Access courses, learn adaptively, and track your progress
                     </CardDescription>
                   </div>
@@ -195,8 +197,8 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
       <div className="py-20 bg-background/5 backdrop-blur-sm">
         <div className="container mx-auto px-6">
           <div className="text-center space-y-4 mb-16">
-            <h2 className="text-3xl font-bold text-white">Why Choose Our Platform?</h2>
-            <p className="text-white/70 max-w-2xl mx-auto">
+            <h2 className="text-3xl font-bold text-gray-900">Why Choose Our Platform?</h2>
+            <p className="text-gray-700 max-w-2xl mx-auto">
               Built for modern education with accessibility, performance, and user experience at its core.
             </p>
           </div>
@@ -208,10 +210,10 @@ export const WelcomePage = ({ onLogin }: WelcomePageProps) => {
                   <div className="mx-auto w-12 h-12 rounded-lg gradient-primary flex items-center justify-center group-hover:shadow-glow transition-smooth">
                     <feature.icon className="h-6 w-6 text-white" />
                   </div>
-                  <CardTitle className="text-white">{feature.title}</CardTitle>
+                  <CardTitle className="text-gray-900">{feature.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <CardDescription className="text-white/70">
+                  <CardDescription className="text-gray-700">
                     {feature.description}
                   </CardDescription>
                 </CardContent>
