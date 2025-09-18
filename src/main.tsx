@@ -1,13 +1,10 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
-import { HashRouter, BrowserRouter } from "react-router-dom";
-
-const Router = import.meta.env.DEV ? BrowserRouter : HashRouter;
-const routerProps = import.meta.env.DEV ? {} : {};
+import { HashRouter } from "react-router-dom";
 
 createRoot(document.getElementById("root")!).render(
-  <Router {...routerProps}>
+  <HashRouter>
     <App />
-  </Router>
+  </HashRouter>
 );
