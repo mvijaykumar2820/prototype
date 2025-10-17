@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["http://localhost:8080", "https://mvijaykumar2820.github.io"],
+    "method": ["GET", "POST", "PUT", "HEAD"],
+    "responseHeader": ["Content-Type", "Access-Control-Allow-Origin"],
+    "maxAgeSeconds": 3600
+  }
+]
