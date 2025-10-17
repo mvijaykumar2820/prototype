@@ -4,7 +4,7 @@ import path from "path";
 import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => ({
-  base: '/prototype/',
+  base: "/prototype/",
   server: {
     host: "::",
     port: 8080,
@@ -15,5 +15,4 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: "/prototype/", // <-- Add this line for GitHub Pages
 }));
