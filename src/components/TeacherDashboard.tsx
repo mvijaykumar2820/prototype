@@ -1,148 +1,201 @@
 // src/components/TeacherDashboard.tsx
 
-import { useState } from "react";
-import { Upload, Plus, FileText, Brain, BarChart3, Users } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Upload, Plus, FileText, Brain, BarChart3, Users, BookMarked, Loader2 } from "lucide-react"; // Added BookMarked, Loader2
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UploadContentDialog } from "./UploadContentDialog"; // Import the new dialog
+import { UploadContentDialog } from "./UploadContentDialog";
+import { CreateCourseDialog } from "./CreateCourseDialog"; // Import the new dialog
+import { db, auth } from "@/lib/firebase"; // Import db and auth
+import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+
+// Define Course structure
+interface Course {
+    id: string;
+    name: string;
+    description?: string;
+    createdAt: any;
+}
 
 export const TeacherDashboard = () => {
+  const [user, loadingAuth] = useAuthState(auth); // Get current teacher
   const [isUploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [isLoadingCourses, setIsLoadingCourses] = useState(true);
 
-  // Define actions, mapping 'upload' to open the dialog
+  // --- NEW: Fetch teacher's courses ---
+  const fetchCourses = async () => {
+    console.log("fetchCourses called in TeacherDashboard!"); // ADD THIS
+      if (!user) return; // Don't fetch if user isn't loaded
+      setIsLoadingCourses(true);
+      try {
+          const coursesRef = collection(db, "courses");
+          // Query courses where teacherId matches the current user's ID
+          const q = query(
+              coursesRef,
+              where("teacherId", "==", user.uid),
+              orderBy("createdAt", "desc") // Show newest first
+          );
+          const querySnapshot = await getDocs(q);
+          const fetchedCourses = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data()
+          })) as Course[];
+          console.log("Setting courses state:", fetchedCourses);
+          setCourses(fetchedCourses);
+      } catch (error) {
+          console.error("Error fetching courses:", error);
+          // Handle error display if needed
+      } finally {
+          setIsLoadingCourses(false);
+      }
+  };
+
+  // Fetch courses when the component loads or user changes
+  useEffect(() => {
+    if (user) {
+      fetchCourses();
+    } else if (!loadingAuth) {
+        // If auth is done loading and there's still no user
+        setIsLoadingCourses(false);
+        setCourses([]); // Clear courses if user logs out
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, loadingAuth]); // Dependency array includes user and loadingAuth
+
+
+  // --- Action handling remains similar ---
   const handleActionClick = (action: string) => {
     if (action === "upload") {
       setUploadDialogOpen(true);
     } else {
-      // You can add logic for other buttons here
-      alert(`Action "${action}" triggered!`);
+      alert(`Action "${action}" triggered! (Not implemented yet)`);
     }
   };
 
   const quickActions = [
-    {
-      title: "Upload Content",
-      description: "Add video, slides, and audio",
-      icon: Upload,
-      action: "upload",
-      gradient: "gradient-primary",
-    },
-    // ... other actions remain the same
-    {
-      title: "Create Test",
-      description: "Design quizzes and assessments",
-      icon: Plus,
-      action: "test",
-      gradient: "gradient-secondary"
-    },
-    {
-      title: "Generate Notes",
-      description: "Auto-create session summaries",
-      icon: FileText,
-      action: "notes",
-      gradient: "gradient-subtle"
-    },
-    {
-      title: "AI Flashcards",
-      description: "Generate learning cards",
-      icon: Brain,
-      action: "flashcards",
-      gradient: "gradient-accent"
-    }
+    { title: "Upload Content", description: "Add a lesson to a course", icon: Upload, action: "upload", gradient: "gradient-primary" },
+    { title: "Create Test", description: "Design quizzes for a course", icon: Plus, action: "test", gradient: "gradient-secondary" },
+    { title: "Generate Notes", description: "Auto-create session summaries", icon: FileText, action: "notes", gradient: "gradient-subtle" },
+    { title: "AI Flashcards", description: "Generate learning cards", icon: Brain, action: "flashcards", gradient: "gradient-accent" }
   ];
 
+  // Dummy recent sessions - we might change this later
   const recentSessions = [
-    { id: 1, title: "Introduction to React", students: 24, date: "Today" },
-    { id: 2, title: "JavaScript Fundamentals", students: 31, date: "Yesterday" },
-    { id: 3, title: "HTML & CSS Basics", students: 28, date: "2 days ago" }
+    { id: 1, title: "React Lesson 1 Uploaded", students: 0, date: "Today" },
+    { id: 2, title: "JS Basics Course Created", students: 0, date: "Yesterday" }
   ];
+
 
   return (
     <>
       <div className="p-6 space-y-8 max-w-7xl mx-auto">
         {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Teacher Dashboard</h1>
-          <p className="text-muted-foreground">Manage your educational content and track student progress</p>
+        <div className="flex justify-between items-center">
+             <div className="space-y-2">
+                <h1 className="text-3xl font-bold text-foreground">Teacher Dashboard</h1>
+                <p className="text-muted-foreground">Manage your courses and track student progress</p>
+             </div>
+             {/* Add Create Course Button here */}
+             <CreateCourseDialog onCourseCreated={fetchCourses} /> {/* Pass fetchCourses to refresh list */}
         </div>
 
-        {/* Quick Actions Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {quickActions.map((action) => (
-            <Card key={action.action} className="card-interactive group">
-              <CardHeader className="pb-3">
-                <div className={`w-12 h-12 rounded-lg ${action.gradient} flex items-center justify-center mb-3 group-hover:scale-105 transition-bounce`}>
-                  <action.icon className="h-6 w-6 text-white" />
+
+        {/* --- NEW: My Courses Section --- */}
+        <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+                <BookMarked className="h-5 w-5"/>
+                My Courses
+            </h2>
+            {isLoadingCourses ? (
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                        <Card key={i}><CardHeader><Skeleton className="h-6 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-2/3 mt-2" /></CardContent></Card>
+                    ))}
+                 </div>
+            ) : courses.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {courses.map((course) => (
+                        <Card key={course.id} className="card-interactive group border border-gray-300 dark:border-gray-600 rounded-md"> {/* darker border */}
+                            <CardHeader>
+                                <CardTitle className="text-lg group-hover:text-primary transition-fast">{course.name}</CardTitle>
+                                {course.description && (
+                                    <CardDescription className="line-clamp-2">{course.description}</CardDescription>
+                                )}
+                            </CardHeader>
+                            <CardContent>
+                                {/* View Course button styled like primary buttons */}
+                                <Button className="w-full bg-primary text-white hover:bg-primary/90 transition-smooth">
+                                  View Course
+                                </Button>
+                            </CardContent>
+                        </Card>
+                    ))}
                 </div>
-                <CardTitle className="text-lg">{action.title}</CardTitle>
-                <CardDescription>{action.description}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button className="w-full transition-smooth" onClick={() => handleActionClick(action.action)}>
-                  Get Started
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+            ) : (
+                <Card className="border border-gray-300 dark:border-gray-600 rounded-md"> {/* darker border */}
+                    <CardContent className="pt-6 text-center text-muted-foreground">
+                        You haven't created any courses yet. Click "Create New Course" to get started!
+                    </CardContent>
+                </Card>
+            )}
         </div>
 
-        {/* Recent Sessions & Analytics */}
+        <hr className="border-border" /> {/* Separator */}
+
+        {/* Quick Actions Grid (Keep this, maybe rename 'Upload Content' description) */}
+        <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-foreground">Quick Actions</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {quickActions.map((action) => (
+                <Card key={action.action} className="card-interactive group">
+                <CardHeader className="pb-3">
+                    <div className={`w-12 h-12 rounded-lg ${action.gradient} flex items-center justify-center mb-3 group-hover:scale-105 transition-bounce`}>
+                    <action.icon className="h-6 w-6 text-white" />
+                    </div>
+                    <CardTitle className="text-lg">{action.title}</CardTitle>
+                    <CardDescription>{action.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Button className="w-full transition-smooth" onClick={() => handleActionClick(action.action)}>
+                    Get Started
+                    </Button>
+                </CardContent>
+                </Card>
+            ))}
+            </div>
+        </div>
+
+        {/* Recent Activity & Analytics (Maybe update this later) */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Sessions Card */}
           <Card className="lg:col-span-2 card-elevated">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                Recent Sessions
-                </CardTitle>
-                <CardDescription>Your latest educational content</CardDescription>
-            </CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-5 w-5" />Recent Activity</CardTitle></CardHeader>
             <CardContent>
                 <div className="space-y-4">
-                {recentSessions.map((session) => (
-                    <div key={session.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-fast">
-                    <div>
-                        <h3 className="font-medium text-foreground">{session.title}</h3>
-                        <p className="text-sm text-muted-foreground">{session.date}</p>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Users className="h-4 w-4" />
-                        {session.students} students
-                    </div>
-                    </div>
-                ))}
+                {recentSessions.map((session) => ( <div key={session.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50"> <h3>{session.title}</h3> <p className="text-xs text-muted-foreground">{session.date}</p> </div> ))}
                 </div>
             </CardContent>
           </Card>
-          
-          {/* Quick Stats Card */}
           <Card className="card-elevated">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Overview
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="text-center">
-                <div className="text-3xl font-bold text-primary">156</div>
-                <p className="text-sm text-muted-foreground">Total Students</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-secondary">24</div>
-                <p className="text-sm text-muted-foreground">Active Sessions</p>
-              </div>
-              <div className="text-center">
-                <div className="text-3xl font-bold text-accent">89%</div>
-                <p className="text-sm text-muted-foreground">Completion Rate</p>
-              </div>
+            <CardHeader><CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" />Overview</CardTitle></CardHeader>
+            <CardContent className="space-y-6 text-center">
+                <div><div className="text-3xl font-bold text-primary"> {courses.length} </div><p className="text-sm text-muted-foreground">Total Courses</p></div>
+                <div><div className="text-3xl font-bold text-secondary">156</div><p className="text-sm text-muted-foreground">Total Students Enrolled</p></div>
+                <div><div className="text-3xl font-bold text-accent">24</div><p className="text-sm text-muted-foreground">Active Lessons</p></div>
             </CardContent>
           </Card>
         </div>
       </div>
 
-      {/* The Upload Dialog Component */}
-      <UploadContentDialog open={isUploadDialogOpen} onOpenChange={setUploadDialogOpen} />
+      {/* Keep the Upload Dialog (We'll modify it next) */}
+      <UploadContentDialog
+        open={isUploadDialogOpen}
+        onOpenChange={setUploadDialogOpen}
+        courses={courses} // Pass the fetched courses
+        isLoadingCourses={isLoadingCourses} // Pass the loading state
+      />
     </>
   );
 };
