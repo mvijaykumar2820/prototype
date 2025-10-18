@@ -13,7 +13,7 @@ import { auth } from '@/lib/firebase';
 import { Skeleton } from "@/components/ui/skeleton";
 import { WelcomePage } from "@/components/WelcomePage"; // IMPORT WELCOME PAGE
 import CourseDetailPage from './pages/CourseDetailPage'; // Import the new page
-
+import TeacherCourseDetailPage from './pages/TeacherCourseDetailPage'; // Import the new page
 
 const queryClient = new QueryClient();
 
@@ -79,6 +79,11 @@ const App = () => {
              {/* <Route path="/auth" element={<AuthPage />} /> */}
 
             {/* NotFound route */}
+
+            <Route
+                path="/teacher/course/:courseId" // New path for teachers
+                element={ user ? <TeacherCourseDetailPage /> : <Navigate to="/" replace /> } // Protect it
+             />
 
 
             <Route path="*" element={<NotFound />} />

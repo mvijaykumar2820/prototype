@@ -9,6 +9,7 @@ import { CreateCourseDialog } from "./CreateCourseDialog"; // Import the new dia
 import { db, auth } from "@/lib/firebase"; // Import db and auth
 import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
 import { useAuthState } from "react-firebase-hooks/auth";
+import { Link } from 'react-router-dom'; // Import Link
 import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
 // Define Course structure
@@ -104,11 +105,8 @@ export const TeacherDashboard = () => {
 
 
         {/* --- NEW: My Courses Section --- */}
-        <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
-                <BookMarked className="h-5 w-5"/>
-                My Courses
-            </h2>
+        <div className="space-y-4 p-6 border border-border/50 rounded-lg bg-background/50 backdrop-blur-sm">
+            <h2 className="text-xl font-semibold text-foreground flex items-center gap-2"> <BookMarked className="h-5 w-5"/> My Courses </h2>
             {isLoadingCourses ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -118,20 +116,20 @@ export const TeacherDashboard = () => {
             ) : courses.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {courses.map((course) => (
-                        <Card key={course.id} className="card-interactive group border border-gray-300 dark:border-gray-600 rounded-md"> {/* darker border */}
-                            <CardHeader>
-                                <CardTitle className="text-lg group-hover:text-primary transition-fast">{course.name}</CardTitle>
-                                {course.description && (
-                                    <CardDescription className="line-clamp-2">{course.description}</CardDescription>
-                                )}
-                            </CardHeader>
-                            <CardContent>
-                                {/* View Course button styled like primary buttons */}
-                                <Button className="w-full bg-primary text-white hover:bg-primary/90 transition-smooth">
-                                  View Course
-                                </Button>
-                            </CardContent>
-                        </Card>
+                        <Link key={course.id} to={`/teacher/course/${course.id}`} className="no-underline">
+                            <Card className="card-interactive group flex flex-col h-full"> {/* Added h-full */}
+                                <CardHeader className="flex-grow">
+                                    <CardTitle className="text-lg group-hover:text-primary transition-fast">{course.name}</CardTitle>
+                                    {course.description && ( <CardDescription className="line-clamp-2">{course.description}</CardDescription> )}
+                                </CardHeader>
+                                <CardContent>
+                                    {/* Updated Button */}
+                                    <Button size="sm" className="w-full transition-smooth pointer-events-none" disabled tabIndex={-1}>
+                                        Manage Course
+                                    </Button>
+                                </CardContent>
+                            </Card>
+                        </Link>
                     ))}
                 </div>
             ) : (

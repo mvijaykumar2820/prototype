@@ -1,25 +1,24 @@
 // src/components/UploadContentDialog.tsx
 
 import { useState } from "react";
-// --- Added Select imports ---
+// Removed Select components if not needed elsewhere in this file
+import { UploadCloud, Video, Loader2, BookMarked } from "lucide-react"; // Removed FileText, Mic
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { db, storage, auth } from "@/lib/firebase";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { useAuthState } from "react-firebase-hooks/auth";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { UploadCloud, Video, FileText, Mic, Loader2, BookMarked } from "lucide-react"; // Added BookMarked
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"; // Removed DialogTrigger
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { db, storage, auth } from "@/lib/firebase"; // Import auth
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-// --- Added more Firestore imports ---
-import { collection, addDoc, serverTimestamp } from "firebase/firestore"; // Removed unused imports
-import { useAuthState } from "react-firebase-hooks/auth"; // Import useAuthState
+} from "@/components/ui/select"; // Keep Select for course selection
 
 // Define Course structure locally for prop typing
 interface CourseInfo {
@@ -30,36 +29,30 @@ interface CourseInfo {
 interface UploadContentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  // --- Receive courses and loading state as props ---
   courses: CourseInfo[];
   isLoadingCourses: boolean;
 }
 
-type FileType = 'video' | 'slides' | 'audio';
+// --- REMOVED FileType type ---
 
-// --- Updated props ---
 export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCourses }: UploadContentDialogProps) => {
-  const [user] = useAuthState(auth); // Get current user
+  const [user] = useAuthState(auth);
   const [title, setTitle] = useState("");
+  // --- Only videoFile state needed ---
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [slidesFile, setSlidesFile] = useState<File | null>(null);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  // --- State for selected course ---
+  // --- REMOVED slidesFile, audioFile states ---
   const [selectedCourseId, setSelectedCourseId] = useState<string | undefined>(undefined);
 
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadingFile, setUploadingFile] = useState<string | null>(null);
+  const [uploadingFile, setUploadingFile] = useState<string | null>(null); // Keep for progress message
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: FileType) => {
+  // --- Simplified handleFileChange ---
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      switch (type) {
-        case 'video': setVideoFile(file); break;
-        case 'slides': setSlidesFile(file); break;
-        case 'audio': setAudioFile(file); break;
-      }
+      setVideoFile(file);
       setError(null); // Clear error when a file is selected
     }
   };
@@ -68,34 +61,15 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
      return new Promise((resolve, reject) => {
       const storageRef = ref(storage, path);
       const uploadTask = uploadBytesResumable(storageRef, file);
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          onProgress(progress);
-        },
-        (error) => { console.error(`Upload failed for ${file.name}:`, error); reject(error); },
-        () => { getDownloadURL(uploadTask.snapshot.ref).then(resolve); }
-      );
+      uploadTask.on( "state_changed", (snapshot) => { onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100); }, reject, () => { getDownloadURL(uploadTask.snapshot.ref).then(resolve); });
     });
   };
 
   const handleUpload = async () => {
-    // --- Check course selection first ---
-    if (!selectedCourseId) {
-        setError("Please select a course for this lesson.");
-        return;
-    }
-    if (!title.trim() || (!videoFile && (!slidesFile || !audioFile))) {
-      setError("Please provide a lesson title and either a video, or both slides and audio.");
-      return;
-    }
-    if (!user) {
-        setError("You must be logged in to upload content.");
-        setIsUploading(false); // Make sure uploading stops if user somehow isn't available
-        return;
-    }
+    // --- Updated validation ---
+    if (!selectedCourseId) { setError("Please select a course."); return; }
+    if (!title.trim() || !videoFile) { setError("Please provide a lesson title and select a video file."); return; }
+    if (!user) { setError("You must be logged in."); return; }
 
     setIsUploading(true);
     setError(null);
@@ -104,34 +78,21 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
     try {
         const timestamp = Date.now();
         let videoUrl: string | null = null;
-        let slidesUrl: string | null = null;
-        let audioUrl: string | null = null;
 
-        // --- Upload files sequentially with progress updates ---
-        if (videoFile) {
-            setUploadingFile(`video: ${videoFile.name}`);
-            videoUrl = await uploadFile(videoFile, `sessions/${timestamp}_${videoFile.name}`, setUploadProgress);
-        }
-        if (slidesFile) {
-            setUploadingFile(`slides: ${slidesFile.name}`);
-            slidesUrl = await uploadFile(slidesFile, `sessions/${timestamp}_${slidesFile.name}`, setUploadProgress);
-        }
-        if (audioFile) {
-            setUploadingFile(`audio: ${audioFile.name}`);
-            audioUrl = await uploadFile(audioFile, `sessions/${timestamp}_${audioFile.name}`, setUploadProgress);
-        }
+        // --- Only upload videoFile ---
+        setUploadingFile(`video: ${videoFile.name}`);
+        videoUrl = await uploadFile(videoFile, `lessons/${selectedCourseId}/${timestamp}_${videoFile.name}`, setUploadProgress); // Changed path slightly
 
        setUploadingFile("Finalizing lesson...");
-       setUploadProgress(100); // Show 100% while saving to DB
+       setUploadProgress(100);
 
-      // --- Save session metadata to Firestore, including courseId ---
-      await addDoc(collection(db, "sessions"), {
-        title: title.trim(), // Trim title
-        videoUrl,
-        slidesUrl,
-        audioUrl,
-        courseId: selectedCourseId, // Add the selected course ID
-        teacherId: user.uid, // Add the teacher's ID
+      // --- Updated: Save session metadata with only videoUrl ---
+      await addDoc(collection(db, "sessions"), { // Still using "sessions" collection, maybe rename later if desired
+        title: title.trim(),
+        videoUrl, // Only save video URL
+        // REMOVED slidesUrl, audioUrl
+        courseId: selectedCourseId,
+        teacherId: user.uid,
         createdAt: serverTimestamp(),
       });
 
@@ -142,110 +103,80 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
     } catch (uploadError) {
       console.error("An error occurred during upload:", uploadError);
       setError("An error occurred during the upload. Please try again.");
-      setIsUploading(false); // Ensure loading stops on error
-      setUploadingFile(null); // Clear uploading file message
+      setIsUploading(false);
+      setUploadingFile(null);
     }
   };
 
-  // Reset state when dialog is closed/opened
+  // --- Updated reset ---
   const handleOnOpenChange = (isOpen: boolean) => {
       if (!isOpen) {
-        // Reset all fields when closing
         setTitle("");
-        setVideoFile(null);
-        setSlidesFile(null);
-        setAudioFile(null);
+        setVideoFile(null); // Only reset video file
         setUploadProgress(0);
         setUploadingFile(null);
-        setSelectedCourseId(undefined); // Reset selected course
+        setSelectedCourseId(undefined);
         setError(null);
         setIsUploading(false);
       } else {
-          // Reset error when opening
-          setError(null);
+          setError(null); // Reset error when opening
       }
       onOpenChange(isOpen);
   }
 
   return (
-    // Dialog open state is controlled by TeacherDashboard
     <Dialog open={open} onOpenChange={handleOnOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Upload New Lesson Content</DialogTitle>
+          {/* --- Updated Titles --- */}
+          <DialogTitle>Upload New Lesson Video</DialogTitle>
           <DialogDescription>
-            Add a new lesson to one of your courses. Include content for high and low bandwidth users.
+            Add a new video lesson to one of your courses. Compress video beforehand for best results.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
 
-           {/* --- Course Selection Dropdown --- */}
+           {/* Course Selection Dropdown (No changes) */}
            <div className="grid grid-cols-4 items-center gap-4">
-             <Label htmlFor="course" className="text-right flex items-center gap-1 shrink-0"> {/* Ensure label doesn't wrap */}
+             <Label htmlFor="course" className="text-right flex items-center gap-1 shrink-0">
                <BookMarked className="h-4 w-4"/> Course
              </Label>
-             <Select
-                value={selectedCourseId}
-                onValueChange={setSelectedCourseId}
-                disabled={isLoadingCourses || isUploading} // Disable during upload too
-             >
-                <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder={isLoadingCourses ? "Loading courses..." : "Select a course"} />
-                </SelectTrigger>
+             <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={isLoadingCourses || isUploading} >
+                <SelectTrigger className="col-span-3"> <SelectValue placeholder={isLoadingCourses ? "Loading courses..." : "Select a course"} /> </SelectTrigger>
                 <SelectContent>
-                    {isLoadingCourses ? (
-                         <SelectItem value="loading" disabled>Loading...</SelectItem>
-                    ) : courses.length === 0 ? (
-                         <SelectItem value="no-courses" disabled>No courses found. Create one first.</SelectItem>
-                    ) : (
-                        // Map through the courses passed as props
-                        courses.map((course) => (
-                            <SelectItem key={course.id} value={course.id}>
-                                {course.name}
-                            </SelectItem>
-                        ))
-                    )}
+                    {isLoadingCourses ? ( <SelectItem value="loading" disabled>Loading...</SelectItem> )
+                    : courses.length === 0 ? ( <SelectItem value="no-courses" disabled>No courses found.</SelectItem> )
+                    : ( courses.map((course) => ( <SelectItem key={course.id} value={course.id}> {course.name} </SelectItem> )) )}
                 </SelectContent>
              </Select>
            </div>
 
-          {/* Lesson Title */}
+          {/* Lesson Title (No changes) */}
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="title" className="text-right shrink-0">
-              Lesson Title
-            </Label>
+            <Label htmlFor="title" className="text-right shrink-0"> Lesson Title </Label>
             <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" placeholder="e.g., Introduction to React Hooks" disabled={isUploading} />
           </div>
 
-          {/* High-Bandwidth Content */}
+          {/* --- SIMPLIFIED: Video Upload Section --- */}
           <div className="space-y-2 p-4 border rounded-lg bg-muted/50">
-              <Label className="font-semibold text-sm">High-Bandwidth (Video)</Label>
-                <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="videoFile" className="text-right text-sm sr-only"> Video </Label> {/* Hide redundant label */}
-                    <Input id="videoFile" type="file" accept="video/*" onChange={(e) => handleFileChange(e, 'video')} className="col-span-4" disabled={isUploading} /> {/* Make full width */}
-                </div>
-                {videoFile && <p className="text-xs text-muted-foreground pt-1">{videoFile.name}</p>}
+              <Label htmlFor="videoFile" className="font-semibold text-sm">Lesson Video</Label>
+              <Input
+                id="videoFile"
+                type="file"
+                accept="video/mp4,video/webm" // Recommend specific web formats
+                onChange={handleFileChange}
+                className="w-full" // Make full width
+                disabled={isUploading}
+               />
+               {videoFile && <p className="text-xs text-muted-foreground pt-1">{videoFile.name}</p>}
           </div>
 
-          {/* Low-Bandwidth Content */}
-          <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-              <Label className="font-semibold text-sm">Low-Bandwidth (Slides + Audio)</Label>
-             <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="slidesFile" className="text-right text-sm sr-only"> Slides </Label>
-                <Input id="slidesFile" type="file" accept=".pdf,application/pdf" onChange={(e) => handleFileChange(e, 'slides')} className="col-span-4" disabled={isUploading} />
-            </div>
-             {slidesFile && <p className="text-xs text-muted-foreground pt-1">{slidesFile.name}</p>}
-             <div className="grid grid-cols-4 items-center gap-4 mt-2"> {/* Added margin top */}
-                <Label htmlFor="audioFile" className="text-right text-sm sr-only"> Audio </Label>
-                <Input id="audioFile" type="file" accept="audio/*" onChange={(e) => handleFileChange(e, 'audio')} className="col-span-4" disabled={isUploading} />
-            </div>
-            {audioFile && <p className="text-xs text-muted-foreground pt-1">{audioFile.name}</p>}
-          </div>
+          {/* --- REMOVED Low-Bandwidth Section --- */}
 
-          {/* Progress and Error display */}
+          {/* Progress and Error display (No changes needed) */}
           {isUploading && (
             <div className="col-span-4 space-y-2">
-                <Progress value={uploadProgress} className="w-full h-2" /> {/* Made progress bar thinner */}
+                <Progress value={uploadProgress} className="w-full h-2" />
                 <p className="text-sm text-center text-muted-foreground">
                   {uploadingFile ? `Uploading ${uploadingFile}... ` : 'Preparing upload...'}
                   ({Math.round(uploadProgress)}%)
@@ -261,8 +192,7 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
           <Button
              type="submit"
              onClick={handleUpload}
-             // Disable button if loading, uploading, or no course selected/available
-             disabled={isUploading || isLoadingCourses || courses.length === 0 || !selectedCourseId}
+             disabled={isUploading || isLoadingCourses || courses.length === 0 || !selectedCourseId || !videoFile} // Disable if no video selected
            >
             {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing Lesson...</> : <><UploadCloud className="mr-2 h-4 w-4" /> Publish Lesson</>}
           </Button>

@@ -5,7 +5,7 @@ import { useParams, Link } from 'react-router-dom';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp, doc, getDoc } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card'; // Removed unused imports CardContent, etc.
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Play, Download, Wifi, WifiOff, Clock, BadgeCheck } from 'lucide-react';
@@ -34,14 +34,20 @@ interface Course {
 }
 
 const CourseDetailPage = () => {
+  // --- ADDED LOG AT TOP ---
+  console.log('--- CourseDetailPage Component Rendered (Version WITH CORRECT LOGS) ---');
+
   const { courseId } = useParams<{ courseId: string }>();
   const [user] = useAuthState(auth);
   const [course, setCourse] = useState<Course | null>(null);
-  const [sessions, setSessions] = useState<Session[]>([]); // Initialized as array
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoadingCourse, setIsLoadingCourse] = useState(true);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const networkStatus = useNetworkState();
+  // --- ADDED LOG ---
+  console.log('Initial networkStatus:', networkStatus);
+
 
   // --- Fetch Course Details (No changes) ---
   useEffect(() => {
@@ -83,29 +89,67 @@ const CourseDetailPage = () => {
     else { setIsLoadingSessions(false); setSessions([]); }
   }, [courseId]);
 
-   // --- Handle Play/Download (No changes) ---
-   const handleStartLearning = (session: Session) => {
-     const isGoodConnection = networkStatus === 'good' || networkStatus === 'moderate';
-     let urlToOpen: string | undefined; let isDownload = false;
-     if (isGoodConnection && session.videoUrl) { urlToOpen = session.videoUrl; }
-     else if (!isGoodConnection && session.videoUrl) { urlToOpen = session.videoUrl; isDownload = true; }
-     else if (session.slidesUrl && session.audioUrl) { urlToOpen = session.slidesUrl; }
-     else if (session.videoUrl) { urlToOpen = session.videoUrl; }
+   // --- Handle ONLY Download (Function called on poor network) ---
+   const handleDownloadVideo = (session: Session) => {
+     // --- LOGS ARE HERE ---
+     console.log(`handleDownloadVideo called for "${session.title}"`);
+     console.log('Current networkStatus (expected poor):', networkStatus);
+     const urlToOpen = session.videoUrl;
+
      if (urlToOpen) {
-       if (isDownload) { const link = document.createElement('a'); link.href = urlToOpen; link.download = session.title.replace(/[^a-zA-Z0-9]/g, '_') + '.mp4'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }
-       else { window.open(urlToOpen, '_blank', 'noopener,noreferrer'); }
-     } else { alert("Could not find content for this lesson."); }
+       try {
+           console.log('Executing download...');
+           const link = document.createElement('a');
+           link.href = urlToOpen;
+           link.download = session.title.replace(/[^a-zA-Z0-9]/g, '_') + '.mp4';
+           document.body.appendChild(link);
+           link.click();
+           document.body.removeChild(link);
+           console.log('Download link clicked.');
+       } catch (e) {
+           console.error("Error triggering download:", e);
+           alert("Could not start download. Please check browser permissions.");
+       }
+     } else {
+       console.error("Download failed: No video URL found.");
+       alert("Could not find video URL for this lesson.");
+     }
    };
 
-   // --- Get Badge (No changes) ---
-   const getSessionBadge = (session: Session) => {
-       const hasVideo = !!session.videoUrl; const hasSlides = !!session.slidesUrl && !!session.audioUrl;
-       if ((networkStatus === 'good' || networkStatus === 'moderate') && hasVideo) { return <Badge variant="default">Video + Audio</Badge>; }
-       if (hasSlides) { return <Badge variant="secondary">Slides + Audio</Badge>; }
-       if (hasVideo) return <Badge variant="default">Video Only</Badge>;
-       if (hasSlides) return <Badge variant="secondary">Slides + Audio</Badge>;
-       return <Badge variant="outline">No Content</Badge>;
-   };
+  // --- Get Badge (No changes) ---
+  const getSessionBadge = (session: Session) => {
+      const hasVideo = !!session.videoUrl; const hasSlides = !!session.slidesUrl && !!session.audioUrl;
+      if ((networkStatus === 'good' || networkStatus === 'moderate') && hasVideo) { return <Badge variant="default">Video + Audio</Badge>; }
+      if (hasSlides) { return <Badge variant="secondary">Slides + Audio</Badge>; }
+      if (hasVideo) return <Badge variant="default">Video Only</Badge>;
+      if (hasSlides) return <Badge variant="secondary">Slides + Audio</Badge>;
+      return <Badge variant="outline">No Content</Badge>;
+  };
+
+  // --- Start Learning / Download Handler ---
+  const handleStartLearning = (session: Session) => {
+    console.log(`handleStartLearning called for "${session.title}"`);
+    // If network is good or moderate and video exists, open it to play online
+    if ((networkStatus === 'good' || networkStatus === 'moderate') && session.videoUrl) {
+      window.open(session.videoUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // If network is poor but video exists, start download
+    if (session.videoUrl) {
+      handleDownloadVideo(session);
+      return;
+    }
+
+    // Fallback to slides if available
+    if (session.slidesUrl) {
+      window.open(session.slidesUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Nothing available
+    alert('No playable content available for this lesson.');
+  };
 
   // --- Helper function to render sessions (Structure Change) ---
   const renderSessionContent = () => {
@@ -150,7 +194,7 @@ const CourseDetailPage = () => {
     return <p className="text-muted-foreground text-center py-4">No lessons have been added to this course yet.</p>;
   };
   
-
+  // --- Main Return ---
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Back Button */}
