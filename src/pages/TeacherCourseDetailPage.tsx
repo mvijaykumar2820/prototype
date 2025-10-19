@@ -31,8 +31,8 @@ interface Session {
   id: string;
   title: string;
   videoUrl?: string; // Need this to delete from storage
+  duration?: string; // Use optional chaining as it might not exist on older data
   createdAt: Timestamp;
-  duration: string; // Keep duration if it's stored or calculated
 }
 
 interface Course {
@@ -71,7 +71,6 @@ const TeacherCourseDetailPage = () => {
                  setError("You do not have permission to view this course.");
                  setCourse(null);
              } else { // User is not loaded yet or not logged in
-                 // Handled by the effect dependency array, or show generic error?
                  setError("Authentication required.");
                  setCourse(null);
              }
@@ -102,11 +101,13 @@ const TeacherCourseDetailPage = () => {
          const querySnapshot = await getDocs(q);
          const fetchedSessions = querySnapshot.docs.map(doc => ({
            id: doc.id,
-           duration: `${Math.floor(Math.random() * 30) + 15} min`, // Keep dummy duration
+           duration: doc.data().duration || "N/A", // Use actual duration or fallback
            ...doc.data()
          })) as Session[];
          setSessions(fetchedSessions);
          // Clear only session-specific errors here if separate state exists
+         // Clear error if it was specifically about lessons
+         if(error === "Failed to load lessons.") setError(null);
        } catch (err) { console.error("Error fetching sessions:", err); setError("Failed to load lessons."); setSessions([]); }
        finally { setIsLoadingSessions(false); }
     };
@@ -117,7 +118,7 @@ const TeacherCourseDetailPage = () => {
         setIsLoadingSessions(false);
         setSessions([]); // Clear sessions if course isn't loaded
     }
-  }, [courseId, course, isLoadingCourse]); // Rerun if course object changes
+  }, [courseId, course, isLoadingCourse, error]); // Rerun if course object changes or specific error occurred
 
   // Fetch Analytics (Student Count)
   useEffect(() => {
@@ -167,11 +168,6 @@ const TeacherCourseDetailPage = () => {
        try {
            // 1. Delete Firestore Document
            const sessionRef = doc(db, "sessions", sessionToDelete.id);
-           // Add security check: Ensure this session belongs to the current teacher (redundant if rules are set)
-           // const sessionSnap = await getDoc(sessionRef);
-           // if (!sessionSnap.exists() || sessionSnap.data()?.teacherId !== user.uid) {
-           //    throw new Error("Permission denied or session not found.");
-           // }
            await deleteDoc(sessionRef);
            console.log("Firestore document deleted.");
 
@@ -188,7 +184,6 @@ const TeacherCourseDetailPage = () => {
                    } // Ignore if file already gone
                }
            }
-           // --- Add deletion for slides/audio if they exist in future ---
 
            // 3. Update UI State
            setSessions(prevSessions => prevSessions.filter(s => s.id !== sessionToDelete.id));
@@ -206,56 +201,93 @@ const TeacherCourseDetailPage = () => {
   const renderSessionContent = () => {
     if (isLoadingSessions) {
       return Array.from({ length: 3 }).map((_, i) => (
-        <Card key={i} className="p-4 border border-border/50 rounded-md"><Skeleton className="h-5 w-full" /></Card>
+        <Card key={i} className="p-4 border-2 border-gray-300 dark:border-gray-600">
+          <Skeleton className="h-5 w-full" />
+        </Card>
       ));
     }
-    // Show session-specific error if course loaded okay
-    if (error === "Failed to load lessons.") {
-        return <p className="text-destructive text-center py-4">{error}</p>;
-    }
-    // Show list if available
+
     if (Array.isArray(sessions) && sessions.length > 0) {
       return sessions.map((session, index) => (
-        <Card key={session.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 hover:bg-muted/50 transition-colors border border-border/50 rounded-md">
-          {/* Lesson Details */}
-          <div className="flex-1 mb-3 sm:mb-0 mr-4">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-sm font-medium text-muted-foreground">{(index + 1).toString().padStart(2, '0')}</span>
-                <h3 className="font-semibold text-foreground">{session.title}</h3>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                {session.videoUrl && <Badge variant="outline">Video</Badge>}
-                <div className="flex items-center gap-1"><Clock className="h-3 w-3" /> {session.duration}</div>
-              </div>
+        <Card 
+          key={session.id} 
+          className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 
+                   border-2 border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
+        >
+          <div className="flex-1 mb-3 sm:mb-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                {(index + 1).toString().padStart(2, '0')}
+              </span>
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100">{session.title}</h3>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-400">
+              {session.videoUrl && <Badge variant="outline">Video</Badge>}
+              {session.duration && (
+                <div className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> {session.duration}
+                </div>
+              )}
+            </div>
           </div>
-          {/* Action Buttons */}
-          <div className="flex gap-2 shrink-0">
-             <Button variant="outline" size="sm" onClick={() => handleEditLesson(session.id)} disabled={!!isDeleting}>
-                <Edit className="h-3 w-3 mr-1"/> Edit
-             </Button>
-             {/* Delete Button */}
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                   <Button variant="destructive" size="sm" disabled={!!isDeleting}>
-                     {isDeleting === session.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3 mr-1"/>}
-                     {isDeleting === session.id ? '' : 'Delete'}
-                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader> <AlertDialogTitle>Are you sure?</AlertDialogTitle> <AlertDialogDescription> This action cannot be undone. This will permanently delete the lesson titled "{session.title}" and its associated video file. </AlertDialogDescription> </AlertDialogHeader>
-                  <AlertDialogFooter> <AlertDialogCancel>Cancel</AlertDialogCancel> <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => handleDeleteLesson(session)}> Delete Lesson </AlertDialogAction> </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="border border-gray-300 dark:border-gray-600"
+              onClick={() => handleEditLesson(session.id)}
+              disabled={!!isDeleting}
+            >
+              <Edit className="h-3 w-3 mr-1"/> Edit
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  disabled={!!isDeleting}
+                >
+                  {isDeleting === session.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <>
+                      <Trash2 className="h-3 w-3 mr-1"/>
+                      Delete
+                    </>
+                  )}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Lesson?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently delete "{session.title}" and its video content.
+                    This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={() => handleDeleteLesson(session)}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </Card>
       ));
     }
-    // Empty state (only if no error loading lessons)
-    if (!error || error === "Course not found." || error === "Failed to load course details." || error === "Invalid Course ID." || error === "You do not have permission to view this course." || error === "Authentication required.") {
-        return <p className="text-muted-foreground text-center py-4">No lessons have been added yet.</p>;
-    }
-    // Fallback if error state is confusing
-    return null;
+
+    return (
+      <Card className="border-2 border-gray-300 dark:border-gray-600">
+        <CardContent className="pt-6 text-center text-gray-600 dark:text-gray-400">
+          No lessons have been added to this course yet.
+        </CardContent>
+      </Card>
+    );
   };
 
 
@@ -263,48 +295,47 @@ const TeacherCourseDetailPage = () => {
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
       {/* Back Button */}
-      <Button variant="outline" size="sm" asChild>
+      <Button variant="outline" size="sm" asChild className="border border-gray-300 dark:border-gray-600">
           <Link to="/"> <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard </Link>
       </Button>
 
-      {/* Course Header */}
+      {/* Course Header with stronger border */}
       {isLoadingCourse ? (
-          <div className="p-4 border border-border/50 rounded-lg bg-background/50 space-y-3"> <Skeleton className="h-8 w-3/5 mb-2" /> <Skeleton className="h-4 w-full" /> <Skeleton className="h-4 w-1/3 mt-4" /> </div>
-      )
-      : course ? (
-        <div className="p-4 border border-border/50 rounded-lg bg-background/50 backdrop-blur-sm space-y-3">
-            {/* Course Details */}
+          <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-background/50 space-y-3">
+            <Skeleton className="h-8 w-3/5 mb-2" />
+            <Skeleton className="h-4 w-full" />
+          </div>
+      ) : course ? (
+        <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-background/50 space-y-3">
             <div>
                 <h1 className="text-3xl font-bold text-foreground">{course.name}</h1>
                 {course.description && <p className="text-muted-foreground mt-2">{course.description}</p>}
             </div>
-            {/* Analytics Section */}
-            <div className="mt-4 border-t border-border/50 pt-3">
-                 <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2"><BarChart className="h-5 w-5"/> Analytics</h2>
+            <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-3">
+                 <h2 className="text-lg font-semibold text-foreground mb-2 flex items-center gap-2">
+                   <BarChart className="h-5 w-5"/> Analytics
+                 </h2>
                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
                      <Users className="h-4 w-4"/>
-                     {isLoadingAnalytics ? <Skeleton className="h-4 w-32"/> :
+                     {isLoadingAnalytics ? <Skeleton className="h-4 w-32"/> : 
                       studentCount !== null ? `${studentCount} student(s) enrolled` : "Could not load student count"}
                  </div>
             </div>
         </div>
-      )
-      // Error state for course loading
-      : ( <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/10"><p className="text-destructive text-center">{error || 'Course could not be loaded.'}</p></div> )}
+      ) : (
+        <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-destructive/10">
+          <p className="text-destructive text-center">{error || 'Course could not be loaded.'}</p>
+        </div>
+      )}
 
-
-      {!isLoadingCourse && course && <hr className="border-border" />}
-
-      {/* Sessions List */}
+      {/* Sessions List with consistent border */}
       {!isLoadingCourse && course && (
-          <div className="space-y-4 p-6 border border-border/50 rounded-lg bg-background/50 backdrop-blur-sm">
+          <div className="space-y-4 p-6 border-2 border-gray-300 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-800/50">
             <div className="flex justify-between items-center">
-                <h2 className="text-xl font-semibold text-foreground">Lessons</h2>
-                {/* Maybe add button to go to Upload page? */}
-                 {/* <Button size="sm" variant="outline"><Plus className="h-4 w-4 mr-1"/> Add New Lesson</Button> */}
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100">Lessons</h2>
             </div>
-            <div className="space-y-3 mt-3">
-                {renderSessionContent()}
+            <div className="space-y-3">
+              {renderSessionContent()}
             </div>
           </div>
       )}

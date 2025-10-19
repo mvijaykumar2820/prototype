@@ -33,65 +33,117 @@ interface Enrollment {
 
 export const StudentDashboard = () => {
   const [user, loadingAuth] = useAuthState(auth);
-  const [enrolledCourses, setEnrolledCourses] = useState<Enrollment[]>([]); // Initialized as array
+  const [enrolledCourses, setEnrolledCourses] = useState<Enrollment[]>([]);
   const [isLoadingEnrollments, setIsLoadingEnrollments] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<Course[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const networkStatus = useNetworkState();
 
-  // --- Fetch student's enrollments (No changes) ---
+  // --- Fetch and VERIFY enrollments ---
   const fetchEnrollments = async () => {
       if (!user) return;
       setIsLoadingEnrollments(true);
       try {
           const userRef = doc(db, "users", user.uid);
           const userSnap = await getDoc(userRef);
+
           if (userSnap.exists() && userSnap.data()?.enrollments) {
-              const enrollmentsData = (userSnap.data()?.enrollments as Enrollment[]).sort(
-                (a, b) => b.enrolledAt.toMillis() - a.enrolledAt.toMillis() // Newest first
-              );
-              setEnrolledCourses(enrollmentsData); // Sets an array
-          } else {
-              setEnrolledCourses([]); // Sets an empty array
-          }
-      } catch (error) { console.error("Error fetching enrollments:", error); setEnrolledCourses([]); } // Sets empty array on error
+              const enrollmentsFromDB = userSnap.data()?.enrollments as Enrollment[];
+              const courseChecks = enrollmentsFromDB.map(e => getDoc(doc(db, "courses", e.courseId)));
+              const courseDocs = await Promise.all(courseChecks);
+              const verifiedEnrollments = enrollmentsFromDB.filter((e, i) => courseDocs[i].exists());
+              if (verifiedEnrollments.length !== enrollmentsFromDB.length) {
+                  console.warn("Some enrolled courses were not found and have been filtered.");
+                  // Optionally update the user's enrollment array in Firestore here to clean it up
+              }
+              const sortedEnrollments = verifiedEnrollments.sort((a, b) => b.enrolledAt.toMillis() - a.enrolledAt.toMillis());
+              setEnrolledCourses(sortedEnrollments);
+          } else { setEnrolledCourses([]); }
+      } catch (error) { console.error("Error fetching/verifying enrollments:", error); setEnrolledCourses([]); }
       finally { setIsLoadingEnrollments(false); }
   };
 
   // Fetch enrollments when user loads
   useEffect(() => {
-    if (user && !loadingAuth) {
-      fetchEnrollments();
-    } else if (!loadingAuth && !user) {
-        setIsLoadingEnrollments(false);
-        setEnrolledCourses([]);
-    }
+    if (user && !loadingAuth) { fetchEnrollments(); }
+    else if (!loadingAuth && !user) { setIsLoadingEnrollments(false); setEnrolledCourses([]); }
   }, [user, loadingAuth]);
 
-  // --- Handle Search (No changes) ---
+  // --- FIXED: Handle Search ---
   const handleSearch = async (term: string) => {
+    // Update the state immediately so the input reflects typing
     setSearchTerm(term);
-    if (!term.trim() || term.trim().length < 3) { setSearchResults([]); setIsSearching(false); return; }
-    setIsSearching(true);
+
+    // Only perform search if term is long enough
+    if (!term.trim() || term.trim().length < 3) {
+        setSearchResults([]); // Clear results if search term is too short
+        setIsSearching(false); // Ensure loading stops
+        return;
+    }
+
+    setIsSearching(true); // Start loading indicator
+    setSearchResults([]); // Clear previous results immediately
+
     try {
         const coursesRef = collection(db, "courses");
         const searchTermLower = term.toLowerCase();
-        const q = query( coursesRef, where("name", ">=", searchTermLower), where("name", "<=", searchTermLower + '\uf8ff'), orderBy("name") );
-        const querySnapshot = await getDocs(q);
+
+        // Basic Firestore prefix search (case-sensitive index limitation)
+        // Query for lowercase start
+        const qLower = query(
+            coursesRef,
+            where("name", ">=", searchTermLower),
+            where("name", "<=", searchTermLower + '\uf8ff'),
+             orderBy("name")
+        );
+         // Query for uppercase start (handle potential capitalization)
+         const qUpper = query(
+            coursesRef,
+            where("name", ">=", term.charAt(0).toUpperCase() + term.slice(1).toLowerCase()), // Proper capitalization
+            where("name", "<=", term.charAt(0).toUpperCase() + term.slice(1).toLowerCase() + '\uf8ff'),
+             orderBy("name")
+        );
+
+        // Fetch results from both queries
+        const [querySnapshotLower, querySnapshotUpper] = await Promise.all([
+            getDocs(qLower),
+            getDocs(qUpper)
+        ]);
+
+
+        // Combine results and remove duplicates
         const resultsMap = new Map<string, Course>();
-        querySnapshot.docs.forEach(doc => {
-            const courseNameLower = (doc.data().name as string).toLowerCase();
-            if (courseNameLower.startsWith(searchTermLower)) { resultsMap.set(doc.id, { id: doc.id, ...doc.data() } as Course) }
-        });
+        const processSnapshot = (snapshot: typeof querySnapshotLower) => {
+             snapshot.docs.forEach(doc => {
+                 // **Client-side filtering for exact prefix match (case-insensitive)**
+                 const courseNameLower = (doc.data().name as string).toLowerCase();
+                 if (courseNameLower.startsWith(searchTermLower)) {
+                      resultsMap.set(doc.id, { id: doc.id, ...doc.data() } as Course);
+                 }
+             });
+        };
+
+        processSnapshot(querySnapshotLower);
+        processSnapshot(querySnapshotUpper);
+
+
+        // Filter out courses already enrolled in
         const enrolledIds = new Set(enrolledCourses.map(e => e.courseId));
         const finalResults = Array.from(resultsMap.values()).filter(course => !enrolledIds.has(course.id));
+
         setSearchResults(finalResults);
-    } catch (error) { console.error("Error searching courses:", error); setSearchResults([]); }
-    finally { setIsSearching(false); }
+        console.log("Search results:", finalResults);
+
+    } catch (error) {
+        console.error("Error searching courses:", error);
+        setSearchResults([]); // Clear results on error
+    } finally {
+        setIsSearching(false); // Stop loading indicator
+    }
   };
 
-   // --- Handle Enrollment (No changes) ---
+   // Handle Enrollment (No changes)
    const handleEnroll = async (course: Course) => {
        if (!user) return;
        console.log(`Enrolling in course: ${course.name} (${course.id})`);
@@ -105,72 +157,104 @@ export const StudentDashboard = () => {
        } catch (error) { console.error("Error enrolling in course:", error); alert("Failed to enroll. Please try again."); }
    };
 
-   const upcomingTests = [ { id: 1, title: "React Quiz", dueDate: "Tomorrow", questions: 15 }, { id: 2, title: "JS Assessment", dueDate: "In 3 days", questions: 20 } ]; // Keep dummy data
+   const upcomingTests = [ { id: 1, title: "React Quiz", dueDate: "Tomorrow", questions: 15 }, { id: 2, title: "JS Assessment", dueDate: "In 3 days", questions: 20 } ];
 
-   // --- Helper function to render enrolled courses ---
-   const renderEnrolledCourses = () => {
-       if (isLoadingEnrollments) {
-           return (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                   {Array.from({ length: 3 }).map((_, i) => ( <Card key={i}><CardHeader><Skeleton className="h-5 w-3/4" /></CardHeader><CardContent><Skeleton className="h-4 w-full" /><Skeleton className="h-8 w-full mt-3" /></CardContent></Card> ))}
-               </div>
-           );
-       }
-       // Check if array AND has items AFTER loading check
-       if (Array.isArray(enrolledCourses) && enrolledCourses.length > 0) {
-           return (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                   {enrolledCourses.map((enrollment) => (
-                       <Link key={enrollment.courseId} to={`/course/${enrollment.courseId}`} className="no-underline">
-                           <Card className="card-interactive group h-full border border-gray-300 dark:border-gray-600 rounded-md"> {/* darker border */}
-                               <CardHeader>
-                                   <CardTitle className="text-lg group-hover:text-primary transition-fast">{enrollment.courseName}</CardTitle>
-                                   <CardDescription>Click to view lessons</CardDescription>
-                               </CardHeader>
-                               <CardContent>
-                                   <Button className="w-full bg-primary text-white hover:bg-primary/90 transition-smooth" tabIndex={0}>
-                                     View Lessons
-                                   </Button>
-                               </CardContent>
-                           </Card>
-                       </Link>
-                   ))}
-               </div>
-           );
-       }
-       // If not loading and array is empty
-       return <Card className="border border-gray-300 dark:border-gray-600 rounded-md"> <CardContent className="pt-6 text-center text-muted-foreground">You haven't enrolled in any courses yet. Use the search bar above!</CardContent> </Card>;
+   // Helper function to render enrolled courses
+   const renderEnrolledCourses = (): JSX.Element | null => {
+     if (isLoadingEnrollments) {
+       return (
+         <div className="py-8">
+           <Skeleton className="h-5 w-48 mb-4" />
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+             {[1, 2, 3].map((n) => (
+               <Card key={n} className="card-elevated">
+                 <CardHeader>
+                   <CardTitle><Skeleton className="h-4 w-32" /></CardTitle>
+                   <CardDescription className="line-clamp-2"><Skeleton className="h-3 w-full" /></CardDescription>
+                 </CardHeader>
+                 <CardContent>
+                   <Skeleton className="h-8 w-full" />
+                 </CardContent>
+               </Card>
+             ))}
+           </div>
+         </div>
+       );
+     }
+
+     if (!isLoadingEnrollments && enrolledCourses.length === 0) {
+       return <p className="text-center text-muted-foreground py-8">You are not enrolled in any courses yet.</p>;
+     }
+
+     return (
+       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+         {enrolledCourses.map((enrollment) => (
+           <Link 
+             key={enrollment.courseId} 
+             to={`/course/${enrollment.courseId}`} // Changed from /courses/ to /course/
+             className="no-underline" // Prevent default link styling
+           >
+             <Card className="card-elevated hover:bg-accent/5 transition-colors">
+               <CardHeader>
+                 <CardTitle>{enrollment.courseName}</CardTitle>
+                 <CardDescription className="text-xs">
+                   Enrolled: {enrollment.enrolledAt.toDate().toLocaleDateString()}
+                 </CardDescription>
+               </CardHeader>
+               <CardContent>
+                 {/* Remove the nested Link, use a styled div instead */}
+                 <div className="text-primary">View Course</div>
+               </CardContent>
+             </Card>
+           </Link>
+         ))}
+       </div>
+     );
    };
 
   return (
     <div className="p-6 space-y-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex justify-between items-start">
+      {/* Header with border */}
+      <div className="flex justify-between items-start p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-background/50">
           <div className="space-y-2">
             <h1 className="text-3xl font-bold text-foreground">Student Dashboard</h1>
             <p className="text-muted-foreground">Your enrolled courses and learning progress</p>
           </div>
           {/* Network Status */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50">
-             {networkStatus === "good" || networkStatus === 'moderate' ? ( <><Wifi className="h-4 w-4 text-success" /> <span className="text-sm text-success">High Speed</span></> )
-             : ( <><WifiOff className="h-4 w-4 text-warning" /> <span className="text-sm text-warning">Low Bandwidth</span></> )}
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-muted/50">
+             {networkStatus === "good" || networkStatus === 'moderate' ? (
+               <><Wifi className="h-4 w-4 text-success" /> <span className="text-sm text-success">High Speed</span></>
+             ) : (
+               <><WifiOff className="h-4 w-4 text-warning" /> <span className="text-sm text-warning">Low Bandwidth</span></>
+             )}
            </div>
       </div>
 
-      {/* Course Search Section */}
-      <div className="space-y-4">
-          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2"> <Search className="h-5 w-5"/> Find New Courses </h2>
+      {/* Course Search Section with border */}
+      <div className="space-y-4 p-6 border border-gray-300 dark:border-gray-600 rounded-lg bg-background/50">
+          <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+            <Search className="h-5 w-5"/> Find New Courses
+          </h2>
           <div className="relative">
-              <Input type="search" placeholder="Search for courses..." value={searchTerm} onChange={(e) => handleSearch(e.target.value)} className="pl-10"/>
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search for courses (min 3 chars)..."
+                value={searchTerm}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="pl-10 border border-gray-300 dark:border-gray-600"
+               />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           </div>
-          {/* Search Results Display */}
-          {isSearching && ( <div className="text-center py-4"><Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground"/></div> )}
-          {!isSearching && searchTerm.length >= 3 && searchResults.length === 0 && ( <p className="text-center text-muted-foreground py-4">No courses found matching "{searchTerm}".</p> )}
+          {/* Search Results with borders */}
+          {isSearching && (
+            <div className="text-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground"/>
+            </div>
+          )}
           {!isSearching && searchResults.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                   {searchResults.map((course) => (
-                      <Card key={course.id} className="card-elevated border border-gray-300 dark:border-gray-600 rounded-md"> {/* darker border */}
+                      <Card key={course.id} className="border border-gray-300 dark:border-gray-600 hover:bg-accent/5 transition-colors">
                           <CardHeader>
                               <CardTitle>{course.name}</CardTitle>
                               <CardDescription className="line-clamp-2">
@@ -179,7 +263,9 @@ export const StudentDashboard = () => {
                               </CardDescription>
                           </CardHeader>
                           <CardContent>
-                              <Button className="w-full" onClick={() => handleEnroll(course)}> <PlusCircle className="mr-2 h-4 w-4"/> Enroll Now </Button>
+                              <Button className="w-full bg-primary text-white hover:bg-primary/90" onClick={() => handleEnroll(course)}>
+                                <PlusCircle className="mr-2 h-4 w-4"/> Enroll Now
+                              </Button>
                           </CardContent>
                       </Card>
                   ))}
@@ -187,31 +273,81 @@ export const StudentDashboard = () => {
           )}
       </div>
 
-       <hr className="border-border" />
-
       {/* Enrolled Courses Section */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold text-foreground flex items-center gap-2"> <BookCopy className="h-5 w-5"/> My Courses </h2>
-        {/* Call the helper function to render content */}
-        {renderEnrolledCourses()}
+      <div className="space-y-4 p-6 border border-gray-300 dark:border-gray-600 rounded-lg bg-background/50">
+        <h2 className="text-xl font-semibold text-foreground flex items-center gap-2">
+          <BookCopy className="h-5 w-5"/> My Courses
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {enrolledCourses.map((enrollment) => (
+            <Link key={enrollment.courseId} to={`/course/${enrollment.courseId}`} className="no-underline">
+              <Card className="border border-gray-300 dark:border-gray-600 hover:bg-accent/5 transition-colors">
+                <CardHeader>
+                  <CardTitle>{enrollment.courseName}</CardTitle>
+                  <CardDescription className="text-xs">
+                    Enrolled: {enrollment.enrolledAt.toDate().toLocaleDateString()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button className="w-full bg-primary text-white hover:bg-primary/90">
+                    Open Course
+                  </Button>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       </div>
 
-      {/* Upcoming Tests & Progress */}
+      {/* Upcoming Tests & Progress Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
          {/* Upcoming Tests Card */}
-         <Card className="lg:col-span-2 card-elevated">
-           <CardHeader><CardTitle className="flex items-center gap-2"><Signal className="h-5 w-5" />Upcoming Tests</CardTitle><CardDescription>Stay on track with assessments</CardDescription></CardHeader>
-           <CardContent><div className="space-y-4">{upcomingTests.map((test) => ( <div key={test.id} className="flex items-center justify-between p-4 rounded-lg bg-muted/50"> <div><h3 className="font-medium">{test.title}</h3><p className="text-sm text-muted-foreground">{test.questions} questions</p></div> <div className="text-right"><p className="text-sm font-medium">{test.dueDate}</p><Button size="sm" className="mt-2" disabled>Take Test</Button></div> </div> ))}</div></CardContent>
+         <Card className="lg:col-span-2 border border-gray-300 dark:border-gray-600">
+           <CardHeader>
+             <CardTitle className="flex items-center gap-2">
+               <Signal className="h-5 w-5" />Upcoming Tests
+             </CardTitle>
+             <CardDescription>Stay on track with assessments</CardDescription>
+           </CardHeader>
+           <CardContent>
+             <div className="space-y-4">
+               {upcomingTests.map((test) => (
+                 <div key={test.id} className="flex items-center justify-between p-4 rounded-lg border border-gray-300 dark:border-gray-600 bg-muted/50">
+                   <div>
+                     <h3 className="font-medium">{test.title}</h3>
+                     <p className="text-sm text-muted-foreground">{test.questions} questions</p>
+                   </div>
+                   <div className="text-right">
+                     <p className="text-sm font-medium">{test.dueDate}</p>
+                     <Button size="sm" className="mt-2 bg-primary text-white hover:bg-primary/90" disabled>
+                       Take Test
+                     </Button>
+                   </div>
+                 </div>
+               ))}
+             </div>
+           </CardContent>
          </Card>
          {/* Your Progress Card */}
-         <Card className="card-elevated">
-           <CardHeader><CardTitle>Your Progress</CardTitle></CardHeader>
+         <Card className="border border-gray-300 dark:border-gray-600">
+           <CardHeader>
+             <CardTitle>Your Progress</CardTitle>
+           </CardHeader>
            <CardContent className="space-y-6">
-                {/* Dynamically show enrolled courses count */}
-               <div className="text-center"><div className="text-3xl font-bold text-primary">{isLoadingEnrollments ? <Skeleton className="h-8 w-12 mx-auto"/> : enrolledCourses.length}</div><p className="text-sm text-muted-foreground">Courses Enrolled</p></div>
-               {/* Dummy data for other stats */}
-               <div className="text-center"><div className="text-3xl font-bold text-secondary">67%</div><p className="text-sm text-muted-foreground">Overall Completion</p></div>
-               <div className="text-center"><div className="text-3xl font-bold text-accent">4.8</div><p className="text-sm text-muted-foreground">Average Score</p></div>
+             <div className="text-center p-4 border border-gray-300 dark:border-gray-600 rounded-lg">
+               <div className="text-3xl font-bold text-primary">
+                 {isLoadingEnrollments ? <Skeleton className="h-8 w-12 mx-auto"/> : enrolledCourses.length}
+               </div>
+               <p className="text-sm text-muted-foreground">Courses Enrolled</p>
+             </div>
+             <div className="text-center p-4 border border-gray-300 dark:border-gray-600 rounded-lg">
+               <div className="text-3xl font-bold text-secondary">67%</div>
+               <p className="text-sm text-muted-foreground">Overall Completion</p>
+             </div>
+             <div className="text-center p-4 border border-gray-300 dark:border-gray-600 rounded-lg">
+               <div className="text-3xl font-bold text-accent">4.8</div>
+               <p className="text-sm text-muted-foreground">Average Score</p>
+             </div>
            </CardContent>
          </Card>
       </div>

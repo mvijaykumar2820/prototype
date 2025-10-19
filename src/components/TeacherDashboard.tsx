@@ -117,14 +117,14 @@ export const TeacherDashboard = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {courses.map((course) => (
                         <Link key={course.id} to={`/teacher/course/${course.id}`} className="no-underline">
-                            <Card className="card-interactive group flex flex-col h-full"> {/* Added h-full */}
+                            <Card className="card-interactive group flex flex-col h-full border border-gray-300 dark:border-gray-600 rounded-md"> {/* added visible border */}
                                 <CardHeader className="flex-grow">
                                     <CardTitle className="text-lg group-hover:text-primary transition-fast">{course.name}</CardTitle>
                                     {course.description && ( <CardDescription className="line-clamp-2">{course.description}</CardDescription> )}
                                 </CardHeader>
                                 <CardContent>
-                                    {/* Updated Button */}
-                                    <Button size="sm" className="w-full transition-smooth pointer-events-none" disabled tabIndex={-1}>
+                                    {/* Updated Button to primary blue */}
+                                    <Button size="sm" className="w-full bg-primary text-white hover:bg-primary/90 transition-smooth">
                                         Manage Course
                                     </Button>
                                 </CardContent>

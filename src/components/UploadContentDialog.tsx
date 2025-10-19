@@ -1,8 +1,7 @@
 // src/components/UploadContentDialog.tsx
 
 import { useState } from "react";
-// Removed Select components if not needed elsewhere in this file
-import { UploadCloud, Video, Loader2, BookMarked } from "lucide-react"; // Removed FileText, Mic
+import { UploadCloud, Video, Loader2, BookMarked, Clock } from "lucide-react"; // Added Clock
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -12,19 +11,9 @@ import { db, storage, auth } from "@/lib/firebase";
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { useAuthState } from "react-firebase-hooks/auth";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"; // Keep Select for course selection
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Define Course structure locally for prop typing
-interface CourseInfo {
-    id: string;
-    name: string;
-}
+interface CourseInfo { id: string; name: string; }
 
 interface UploadContentDialogProps {
   open: boolean;
@@ -33,42 +22,82 @@ interface UploadContentDialogProps {
   isLoadingCourses: boolean;
 }
 
-// --- REMOVED FileType type ---
+// Helper to format seconds into MM:SS
+const formatDuration = (seconds: number): string => {
+    if (isNaN(seconds) || seconds < 0) return "N/A";
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
 
 export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCourses }: UploadContentDialogProps) => {
   const [user] = useAuthState(auth);
   const [title, setTitle] = useState("");
-  // --- Only videoFile state needed ---
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  // --- REMOVED slidesFile, audioFile states ---
+  const [videoDuration, setVideoDuration] = useState<string | null>(null); // State for duration string
   const [selectedCourseId, setSelectedCourseId] = useState<string | undefined>(undefined);
-
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadingFile, setUploadingFile] = useState<string | null>(null); // Keep for progress message
+  const [uploadingFile, setUploadingFile] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // --- Simplified handleFileChange ---
+  // Updated handleFileChange to get duration
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    setVideoDuration(null); // Reset duration
+
+    if (file && file.type.startsWith("video")) {
       setVideoFile(file);
-      setError(null); // Clear error when a file is selected
+      setError(null);
+
+      // Create temporary video element to read metadata
+      const videoElement = document.createElement('video');
+      videoElement.preload = 'metadata';
+
+      videoElement.onloadedmetadata = () => {
+        window.URL.revokeObjectURL(videoElement.src); // Clean up
+        const duration = videoElement.duration;
+        console.log("Video duration loaded:", duration, "seconds");
+        setVideoDuration(formatDuration(duration)); // Format and set state
+      };
+
+      videoElement.onerror = () => {
+          console.error("Error loading video metadata.");
+          window.URL.revokeObjectURL(videoElement.src); // Clean up
+          setVideoDuration("Error");
+      }
+
+      videoElement.src = URL.createObjectURL(file); // Load file
+
+    } else if (file) {
+        setError("Please select a valid video file.");
+        setVideoFile(null);
+    } else {
+        setVideoFile(null); // Clear file if selection cancelled
     }
   };
 
+  // uploadFile function (no changes needed)
   const uploadFile = (file: File, path: string, onProgress: (progress: number) => void): Promise<string> => {
      return new Promise((resolve, reject) => {
       const storageRef = ref(storage, path);
       const uploadTask = uploadBytesResumable(storageRef, file);
-      uploadTask.on( "state_changed", (snapshot) => { onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100); }, reject, () => { getDownloadURL(uploadTask.snapshot.ref).then(resolve); });
+      uploadTask.on( "state_changed",
+        (snapshot) => { onProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100); },
+        (error) => { console.error(`Upload failed:`, error); reject(error); }, // Added log
+        () => { getDownloadURL(uploadTask.snapshot.ref).then(resolve); }
+      );
     });
   };
 
+  // handleUpload function (saves duration)
   const handleUpload = async () => {
-    // --- Updated validation ---
     if (!selectedCourseId) { setError("Please select a course."); return; }
     if (!title.trim() || !videoFile) { setError("Please provide a lesson title and select a video file."); return; }
+    if (videoDuration === null || videoDuration === "Error") {
+        setError("Waiting for video duration or failed to get it. Please re-select the file.");
+        return;
+    }
     if (!user) { setError("You must be logged in."); return; }
 
     setIsUploading(true);
@@ -79,47 +108,49 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
         const timestamp = Date.now();
         let videoUrl: string | null = null;
 
-        // --- Only upload videoFile ---
         setUploadingFile(`video: ${videoFile.name}`);
-        videoUrl = await uploadFile(videoFile, `lessons/${selectedCourseId}/${timestamp}_${videoFile.name}`, setUploadProgress); // Changed path slightly
+        // Use a path like lessons/[courseId]/[unique_filename]
+        const filePath = `lessons/${selectedCourseId}/${timestamp}_${videoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`; // Sanitize filename
+        videoUrl = await uploadFile(videoFile, filePath, setUploadProgress);
 
        setUploadingFile("Finalizing lesson...");
        setUploadProgress(100);
 
-      // --- Updated: Save session metadata with only videoUrl ---
-      await addDoc(collection(db, "sessions"), { // Still using "sessions" collection, maybe rename later if desired
+      // Save duration to Firestore
+      await addDoc(collection(db, "sessions"), {
         title: title.trim(),
-        videoUrl, // Only save video URL
-        // REMOVED slidesUrl, audioUrl
+        videoUrl,
+        duration: videoDuration, // Save the formatted duration string
         courseId: selectedCourseId,
         teacherId: user.uid,
         createdAt: serverTimestamp(),
       });
 
-      console.log(`Lesson "${title}" added to course ${selectedCourseId}`);
+      console.log(`Lesson "${title}" (Duration: ${videoDuration}) added to course ${selectedCourseId}`);
       setIsUploading(false);
-      onOpenChange(false); // Close dialog on success
+      onOpenChange(false); // Close dialog
 
     } catch (uploadError) {
-      console.error("An error occurred during upload:", uploadError);
-      setError("An error occurred during the upload. Please try again.");
-      setIsUploading(false);
-      setUploadingFile(null);
+        console.error("An error occurred during upload:", uploadError);
+        setError("An error occurred during the upload. Please try again.");
+        setIsUploading(false);
+        setUploadingFile(null);
     }
   };
 
-  // --- Updated reset ---
+  // handleOnOpenChange function (resets duration)
   const handleOnOpenChange = (isOpen: boolean) => {
       if (!isOpen) {
         setTitle("");
-        setVideoFile(null); // Only reset video file
+        setVideoFile(null);
+        setVideoDuration(null); // Reset duration
         setUploadProgress(0);
         setUploadingFile(null);
         setSelectedCourseId(undefined);
         setError(null);
         setIsUploading(false);
       } else {
-          setError(null); // Reset error when opening
+          setError(null); // Clear error on open
       }
       onOpenChange(isOpen);
   }
@@ -128,52 +159,57 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
     <Dialog open={open} onOpenChange={handleOnOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          {/* --- Updated Titles --- */}
           <DialogTitle>Upload New Lesson Video</DialogTitle>
           <DialogDescription>
-            Add a new video lesson to one of your courses. Compress video beforehand for best results.
+            Add a new video lesson. Duration will be detected automatically.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-6 py-4">
 
-           {/* Course Selection Dropdown (No changes) */}
+           {/* Course Selection Dropdown */}
            <div className="grid grid-cols-4 items-center gap-4">
-             <Label htmlFor="course" className="text-right flex items-center gap-1 shrink-0">
-               <BookMarked className="h-4 w-4"/> Course
-             </Label>
+             <Label htmlFor="course" className="text-right flex items-center gap-1 shrink-0"> <BookMarked className="h-4 w-4"/> Course </Label>
              <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={isLoadingCourses || isUploading} >
                 <SelectTrigger className="col-span-3"> <SelectValue placeholder={isLoadingCourses ? "Loading courses..." : "Select a course"} /> </SelectTrigger>
                 <SelectContent>
                     {isLoadingCourses ? ( <SelectItem value="loading" disabled>Loading...</SelectItem> )
-                    : courses.length === 0 ? ( <SelectItem value="no-courses" disabled>No courses found.</SelectItem> )
+                    : courses.length === 0 ? ( <SelectItem value="no-courses" disabled>No courses found. Create one first.</SelectItem> )
                     : ( courses.map((course) => ( <SelectItem key={course.id} value={course.id}> {course.name} </SelectItem> )) )}
                 </SelectContent>
              </Select>
            </div>
 
-          {/* Lesson Title (No changes) */}
+          {/* Lesson Title */}
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="title" className="text-right shrink-0"> Lesson Title </Label>
-            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" placeholder="e.g., Introduction to React Hooks" disabled={isUploading} />
+            <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" placeholder="e.g., Intro to Hooks" disabled={isUploading} />
           </div>
 
-          {/* --- SIMPLIFIED: Video Upload Section --- */}
+          {/* Video Upload Section */}
           <div className="space-y-2 p-4 border rounded-lg bg-muted/50">
               <Label htmlFor="videoFile" className="font-semibold text-sm">Lesson Video</Label>
               <Input
-                id="videoFile"
-                type="file"
-                accept="video/mp4,video/webm" // Recommend specific web formats
+                id="videoFile" type="file"
+                accept="video/mp4,video/webm,video/mov"
                 onChange={handleFileChange}
-                className="w-full" // Make full width
-                disabled={isUploading}
+                className="w-full" disabled={isUploading}
                />
-               {videoFile && <p className="text-xs text-muted-foreground pt-1">{videoFile.name}</p>}
+               {/* Display filename and detected duration */}
+               {videoFile && (
+                    <div className="flex justify-between items-center text-xs text-muted-foreground pt-1">
+                        <span className="truncate pr-2">{videoFile.name}</span> {/* Added truncate */}
+                        {videoDuration === "Error" ? (
+                             <span className="text-destructive shrink-0">Could not get duration</span>
+                        ) : videoDuration ? (
+                            <span className="flex items-center gap-1 shrink-0"><Clock className="h-3 w-3"/> {videoDuration}</span>
+                        ) : (
+                            <span className="flex items-center gap-1 shrink-0"><Loader2 className="h-3 w-3 animate-spin"/> Getting duration...</span>
+                        )}
+                    </div>
+               )}
           </div>
 
-          {/* --- REMOVED Low-Bandwidth Section --- */}
-
-          {/* Progress and Error display (No changes needed) */}
+          {/* Progress and Error display */}
           {isUploading && (
             <div className="col-span-4 space-y-2">
                 <Progress value={uploadProgress} className="w-full h-2" />
@@ -190,9 +226,9 @@ export const UploadContentDialog = ({ open, onOpenChange, courses, isLoadingCour
         </div>
         <DialogFooter>
           <Button
-             type="submit"
-             onClick={handleUpload}
-             disabled={isUploading || isLoadingCourses || courses.length === 0 || !selectedCourseId || !videoFile} // Disable if no video selected
+             type="submit" onClick={handleUpload}
+             // Disable if loading, no course, no video, OR duration not loaded/error
+             disabled={isUploading || isLoadingCourses || courses.length === 0 || !selectedCourseId || !videoFile || !videoDuration || videoDuration === "Error"}
            >
             {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing Lesson...</> : <><UploadCloud className="mr-2 h-4 w-4" /> Publish Lesson</>}
           </Button>
